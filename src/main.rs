@@ -16,13 +16,22 @@ enum Method {
     GET,
     #[serde(alias = "post")]
     POST,
+    #[serde(alias = "put")]
+    PUT,
+    #[serde(alias = "patch")]
+    PATCH,
+    #[serde(alias = "delete")]
+    DELETE,
 }
 
 impl Into<reqwest::Method> for Method {
     fn into(self) -> reqwest::Method {
         match self {
             Self::GET => reqwest::Method::GET,
-            Self::POST => reqwest::Method::POST
+            Self::POST => reqwest::Method::POST,
+            Self::PUT => reqwest::Method::PUT,
+            Self::PATCH => reqwest::Method::PATCH,
+            Self::DELETE => reqwest::Method::DELETE
         }
     }
 }
