@@ -1,8 +1,9 @@
-use reqwest::{Client, Request};
 use serde::Deserialize;
 use std::{
     error::Error,
-    fmt::{self, write}, io::Read,
+    fmt::{self},
+    io::Read,
+    collections::HashMap
 };
 
 #[derive(Deserialize, Debug)]
@@ -20,20 +21,31 @@ impl Into<reqwest::Method> for Method {
 }
 
 #[derive(Deserialize, Debug)]
-struct RequestParams {
+struct Req {
     method: Method,
     path: String,
+    headers: Option<HashMap<String, String>> 
 }
 
-#[derive(Deserialize, Debug)]
-struct Req {
-    request_name: String,
-    params: RequestParams,
-}
 
 impl Into<reqwest::blocking::Request> for Req {
     fn into(self) -> reqwest::blocking::Request {
-        reqwest::blocking::Request::new(self.params.method.into(), self.params.path.parse().unwrap())
+        let mut request = reqwest::blocking::Request::new(
+            self.method.into(),
+            self.path.parse().unwrap(),
+        );
+        
+        self.headers.and_then(|h| {
+            let headers = request.headers_mut();
+            
+            h.into_iter().for_each(|(key, value)| {
+                headers.append(key.leak() as &str, value.parse().unwrap());
+            });
+            
+            Some(())
+        });
+        
+        request
     }
 }
 
@@ -52,7 +64,7 @@ impl Error for AppError {}
 
 fn main() -> Result<(), AppError> {
     let client = reqwest::blocking::Client::new();
-    let request: reqwest::blocking::Request = serde_json::from_str::<Req>(
+    let request: Req = serde_json::from_str::<Req>(
         std::fs::read_to_string("request.json")
             .map_err(|e| AppError {
                 message: e.to_string(),
@@ -61,15 +73,15 @@ fn main() -> Result<(), AppError> {
     )
     .map_err(|e| AppError {
         message: e.to_string(),
-    })?.into();
-    
-    let mut response = client.execute(request).map_err(|e| AppError {
-        message: e.to_string()
     })?;
-    
-    let mut body = String::new(); 
+
+    let mut response = client.execute(request.into()).map_err(|e| AppError {
+        message: e.to_string(),
+    })?;
+
+    let mut body = String::new();
     response.read_to_string(&mut body).unwrap();
-    println!("{:?}", body);
-    
+
+    println!("{body}");
     Ok(())
 }
