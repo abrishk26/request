@@ -1,21 +1,28 @@
+use reqwest::{
+    blocking::{Request, RequestBuilder},
+    header::HeaderMap,
+};
 use serde::Deserialize;
 use std::{
+    collections::HashMap,
     error::Error,
     fmt::{self},
     io::Read,
-    collections::HashMap
 };
 
 #[derive(Deserialize, Debug)]
 enum Method {
     #[serde(alias = "get")]
     GET,
+    #[serde(alias = "post")]
+    POST,
 }
 
 impl Into<reqwest::Method> for Method {
     fn into(self) -> reqwest::Method {
         match self {
             Self::GET => reqwest::Method::GET,
+            Self::POST => reqwest::Method::POST
         }
     }
 }
@@ -24,27 +31,30 @@ impl Into<reqwest::Method> for Method {
 struct Req {
     method: Method,
     path: String,
-    headers: Option<HashMap<String, String>> 
+    headers: Option<HashMap<String, String>>,
+    body: Option<serde_json::Value>,
 }
 
-
-impl Into<reqwest::blocking::Request> for Req {
-    fn into(self) -> reqwest::blocking::Request {
-        let mut request = reqwest::blocking::Request::new(
-            self.method.into(),
-            self.path.parse().unwrap(),
+impl Req {
+    fn into_req(self, client: reqwest::blocking::Client) -> reqwest::blocking::RequestBuilder {
+        let mut request = RequestBuilder::from_parts(
+            client,
+            Request::new(self.method.into(), self.path.parse().unwrap()),
         );
-        
-        self.headers.and_then(|h| {
-            let headers = request.headers_mut();
-            
+
+        if let Some(h) = self.headers {
+            let mut headers = HeaderMap::new();
             h.into_iter().for_each(|(key, value)| {
                 headers.append(key.leak() as &str, value.parse().unwrap());
             });
-            
-            Some(())
-        });
-        
+
+            request = request.headers(headers);
+        }
+
+        if let Some(b) = self.body {
+            request = request.json(&b);
+        }
+
         request
     }
 }
@@ -75,7 +85,7 @@ fn main() -> Result<(), AppError> {
         message: e.to_string(),
     })?;
 
-    let mut response = client.execute(request.into()).map_err(|e| AppError {
+    let mut response = request.into_req(client).send().map_err(|e| AppError {
         message: e.to_string(),
     })?;
 
